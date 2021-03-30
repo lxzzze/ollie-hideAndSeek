@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1.0,user-scalable=no,maxinum-scale=1,width=device-width">
+    <title>HideAndSeek</title>
+    <script src="https://cdn.bootcss.com/vue/2.6.10/vue.js"></script>
+    <script src="https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
+    <link rel="icon" href="data:;base64,=">
+    <style>
+        .container {
+            display: flex;
+            align-items: center;
+        }
+
+        .map-container {
+            max-width: 510px;
+            width: 100%;
+        }
+
+        .gameItem {
+            display: inline-block;
+            width: 100px;
+            box-sizing: border-box;
+            max-height: 100px;
+            line-height: 100px;
+            border: 1px solid black;
+            text-align: center;
+        }
+
+        .map-container div {
+
+        }
+
+        .wall {
+            background-color: black;
+        }
+
+        .road {
+            color: white;
+        }
+
+        .gameButton {
+            background-color: #efefef;
+        }
+
+        .space {
+            background-color: white;
+            color: white;
+            border: 0;
+            margin: 1px;
+        }
+
+        .player {
+        }
+
+        .clickButton {
+            background: #dddddd;
+        }
+
+        @media screen and (max-width: 1020px) {
+            .container {
+                display: block;
+            }
+
+            .gameItem {
+                width: 20%;
+                line-height: 1;
+                position: relative;
+                padding: calc(10% - 1px) 0;
+            }
+
+            .gameItem::after {
+                content: ".";
+                height: 0;
+                visibility: hidden;
+                display: block;
+                clear: both;
+            }
+
+            .gameItem span {
+                position: absolute;
+                display: block;
+                width: 100%;
+                text-align: center;
+                top: 50%;
+                left: 0;
+                margin-top: -11px;
+            }
+
+            .operator {
+                margin-top: 10px;
+            }
+
+            .operator .gameItem {
+                width: 19%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <label>
+        玩家ID：
+        <input type="text" v-model="playerId">
+    </label>
+    <div v-if="wsError" style="display: inline;color: red">
+        您已断线，请刷新页面重新连接
+    </div>
+    <div v-if="matching" style="display: inline">
+        匹配中……
+    </div>
+    <div v-else style="display: inline">
+        <div v-if="!roomId" style="display: inline">
+            <button @click="changeName">确认改名</button>
+            <button @click="matchPlayer">匹配</button>
+        </div>
+        <div v-if="!roomId" style="padding-top: 5px;">
+            对手ID：
+            <input type="text" v-model="opponentId">
+            <button @click="makeChallenge">挑战</button>
+        </div>
+    </div>
+    <div v-if="roomId">
+        <div>
+            房间号：{{roomId}}
+        </div>
+        <div v-if="timeLimit">
+            剩余时间：{{timeLimit}}
+        </div>
+    </div>
+    <div v-else>
+        <div v-if="onlinePlayer">
+            当前在线玩家：{{onlinePlayer}}
+        </div>
+        <div v-if="playersRank">
+            <br>
+            游戏排行榜：
+            <br>
+            <template v-for="times, player in playersRank">
+                玩家：{{player}} 胜利次数：{{times}}
+                <br>
+            </template>
+        </div>
+    </div>
+    <br>
+    <div v-if="playerType">
+        本局玩家类型：{{playerTypeArr[playerType]}}
+    </div>
+    <hr>
+    <div v-if="mapData" class="container">
+        <div class="map-container">
+            <template v-for="column in mapData">
+                <div>
+                    <template v-for="item in column">
+                        <div v-if="item==playerId" class="gameItem player">
+                            <span>{{playerId}}</span>
+                        </div>
+                        <div v-else-if="item==0" class="gameItem wall">
+                            <span>墙</span>
+                        </div>
+                        <div v-else-if="item==1" class="gameItem road">
+                            <span>路</span>
+                        </div>
+                        <div v-else class="gameItem player">
+                            <span>{{item}}</span>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+        <div class="operator">
+            <template v-for="i in 5">
+                <div @mouseup="removeClickClass">
+                    <template v-for="j in 5" v-if="i > 1">
+                        <div v-if="i==2&&j==3" @mousedown="clickDirect('up')" data-direction="up"
+                             class="gameItem gameButton">
+                            <span>上</span>
+                        </div>
+                        <div v-else-if="i==3&&j==2" @mousedown="clickDirect('left')" data-direction="left"
+                             class="gameItem gameButton">
+                            <span>左</span>
+                        </div>
+                        <div v-else-if="i==3&&j==4" @mousedown="clickDirect('right')" data-direction="right"
+                             class="gameItem gameButton">
+                            <span>右</span>
+                        </div>
+                        <div v-else-if="i==4&&j==3" @mousedown="clickDirect('down')" data-direction="down"
+                             class="gameItem gameButton">
+                            <span>下</span>
+                        </div>
+                        <div v-else class="gameItem space">
+                            <span>无</span>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    var host = "127.0.0.1";
+    var wsPort = "8811";
+    var frontendPort = "8812";
+
+    //    var host = "193.112.214.140";
+    //    var wsPort = "31200";
+    //    var frontendPort = "31201";
+
+    var app = new Vue({
+        el: '#app',
+        data: {
+            websock: null,
+            playerId: '',
+            playerType: null,
+            playerTypeArr: [0, '寻找者', '躲藏者'],
+            matching: false,
+            roomId: '',
+            mapData: null,
+            onlinePlayer: null,
+            playersRank: null,
+            wsError: false,
+            opponentId: '',
+            timeLimit: null,
+            timerId: null
+        },
+        created() {
+            this.initPlayerId()
+            this.initWebSocket();
+            this.initDirectionKey();
+            var that = this
+            setTimeout(function () {
+                that.getServerInfo()
+            }, 100)
+        },
+        destroyed() {
+            this.websock.close() //离开路由之后断开websocket连接
+        },
+        methods: {
+            makeChallenge() {
+                if (!this.opponentId) {
+                    alert('请输入对手ID');
+                    return;
+                }
+                let actions = {
+                    "code": 603,
+                    "opponent_id": this.opponentId
+                };
+                this.websocketsend(actions);
+            },
+            getServerInfo() {
+                var that = this
+                $.ajax({
+                    url: "http://" + host + ":" + frontendPort,
+                    type: 'get',
+                    dataType: 'json',
+                    data: {
+                        'a': 'get_online_player'
+                    },
+                    success: function (result) {
+                        that.onlinePlayer = result.online_player
+                    },
+                    error: function () {
+
+                    }
+                })
+                $.ajax({
+                    url: "http://" + host + ":" + frontendPort,
+                    type: 'get',
+                    dataType: 'json',
+                    data: {
+                        'a': 'get_player_rank'
+                    },
+                    success: function (result) {
+                        that.playersRank = result.players_rank
+                    },
+                    error: function () {
+
+                    }
+                })
+            },
+            initPlayerId() {
+                var inputPlayerId = this.getUrlParam('player_id')
+                if (inputPlayerId !== '') {
+                    this.playerId = decodeURIComponent(inputPlayerId)
+                } else {
+                    this.playerId = 'player_' + Math.round(Math.random() * 1000)
+                }
+            },
+            getUrlParam(paramName) {
+                var url = document.location.toString();
+                var arrObj = url.split("?");
+                if (arrObj.length > 1) {
+                    var arrPara = arrObj[1].split("&");
+                    var arr;
+                    for (var i = 0; i < arrPara.length; i++) {
+                        arr = arrPara[i].split("=");
+                        if (arr !== null && arr[0] === paramName) {
+                            return arr[1];
+                        }
+                    }
+                    return '';
+                }
+                else {
+                    return "";
+                }
+            },
+            initDirectionKey() {
+                var that = this
+                document.onkeydown = function () {
+                    if (event.keyCode === 38) {
+                        console.log('up')
+                        that.clickDirect('up')
+                    } else if (event.keyCode === 37) {
+                        console.log('left')
+                        that.clickDirect('left')
+                    } else if (event.keyCode === 39) {
+                        console.log('right')
+                        that.clickDirect('right')
+                    } else if (event.keyCode === 40) {
+                        console.log('down')
+                        that.clickDirect('down')
+                    }
+                }
+            },
+            changeName() {
+                window.location.href = window.location.origin +
+                    window.location.pathname + '?player_id=' + this.playerId
+            },
+            //匹配玩家
+            matchPlayer() {
+                let actions = {"code": 600};
+                this.websocketsend(actions);
+                this.matching = true
+            },
+            startRoom() {
+                let actions = {"code": 601, 'room_id': this.roomId};
+                this.websocketsend(actions);
+                this.matching = false
+            },
+            initWebSocket() { //初始化weosocket
+                const wsuri = "ws://" + host + ":" + wsPort + "?player_id=" + this.playerId;
+                this.websock = new WebSocket(wsuri);
+                this.websock.onmessage = this.websocketonmessage;
+                this.websock.onopen = this.websocketonopen;
+                this.websock.onerror = this.websocketonerror;
+                this.websock.onclose = this.websocketclose;
+            },
+            websocketonopen() { //连接建立之后执行send方法发送数据
+            },
+            websocketonerror() {//连接建立失败重连
+                this.initWebSocket();
+            },
+            websocketonmessage(e) { //数据接收
+                let message = JSON.parse(e.data);
+                let responseData = message.data
+                switch (message.code) {
+                    case 1001://匹配成功
+                        this.roomId = responseData.room_id
+                        this.startRoom()
+                        break;
+                    case 1004://游戏数据
+                        this.mapData = responseData.map_data;
+                        if (!this.playerType){
+                            let players = responseData.players;
+                            this.playerType = players[this.playerId].type
+                        }
+                        if (!this.timerId) {
+                            this.timeLimit = responseData.time_limit
+                            var that = this
+                            this.timerId = setInterval(function () {
+                                that.timeLimit--
+                            }, 1000);
+                        }
+                        break;
+                    case 1005://游戏结束
+                        this.winner = responseData.winner
+                        clearInterval(this.timerId)
+                        setTimeout(function () {
+                            alert('游戏结束~胜者是：' + responseData.winner)
+                        }, 200)
+                        break;
+                    case 1006:
+                        clearInterval(this.timerId)
+                        alert('你的敌人跑路了')
+                        break;
+                    case 1007:
+                        alert("对手不在线")
+                        break;
+                    case 1008:
+                        var challengerId = responseData.challenger_id;
+                        var msg = "玩家 " + challengerId + " 邀请你进行对战，是否接受";
+                        let actions = {
+                            "code": 604,
+                            "challenger_id": challengerId
+                        };
+                        if (!confirm(msg)) {
+                            actions = {
+                                "code": 605,
+                                "challenger_id": challengerId
+                            };
+                        }
+                        this.websocketsend(actions);
+                        break;
+                    case 1009:
+                        alert("对方拒绝了你的挑战");
+                        break;
+                }
+            },
+            websocketsend(Data) {//数据发送
+                this.websock.send(JSON.stringify(Data));
+            },
+            websocketclose(e) {  //关闭
+                console.log('断开连接', e);
+                if (e.code === 4000) {
+                    this.wsError = true
+                    alert('该player_id已在线')
+                }
+            },
+            clickDirect(direction) {
+                let actions = {"code": 602, 'direction': direction};
+                this.websocketsend(actions);
+                this.addClickClass(direction);
+            },
+            hasClass(ele, cls) {
+                return ele.className.match(new RegExp("(\\s|^)" + cls + "(\\s|$)"));
+            },
+            //为指定的dom元素添加样式
+            addClass(ele, cls) {
+                if (!this.hasClass(ele, cls)) ele.className += " " + cls;
+            },
+            //删除指定dom元素的样式
+            removeClass(ele, cls) {
+                if (this.hasClass(ele, cls)) {
+                    let reg = new RegExp("(\\s|^)" + cls + "(\\s|$)");
+                    ele.className = ele.className.replace(reg, " ");
+                }
+            },
+            addClickClass(direction) {
+                let divs = document.getElementsByClassName('gameButton')
+                for (let div of divs) {
+                    if (div.dataset.direction === direction) {
+                        this.addClass(div, 'clickButton')
+                    }
+                }
+            },
+            removeClickClass() {
+                let divs = document.getElementsByClassName('gameButton')
+                for (let div of divs) {
+                    this.removeClass(div, 'clickButton')
+                }
+            },
+        }
+    })
+</script>
+</body>
+</html>
