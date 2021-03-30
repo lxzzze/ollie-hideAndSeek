@@ -13,10 +13,13 @@ class TaskManager
 {
     const TASK_CODE_FIND_PLAYER = 1;
 
+    //匹配玩家
     public static function findPlayer()
     {
+        //获取当前匹配玩家人数
         $playerListLen = DataCenter::getPlayerWaitListLen();
         if ($playerListLen >= 2) {
+            //匹配成功返回
             $redPlayer = DataCenter::popPlayerFromWaitList();
             $bluePlayer = DataCenter::popPlayerFromWaitList();
             return [

@@ -1,10 +1,4 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Next
- * Date: 2019/3/16
- * Time: 18:54
- */
 
 namespace App\Manager;
 
@@ -12,6 +6,7 @@ namespace App\Manager;
 use App\Model\Map;
 use App\Model\Player;
 
+//游戏具体逻辑类
 class Game
 {
     private $mapWidth = 12;
@@ -53,6 +48,7 @@ class Game
         }
     }
 
+    //根据算法检查游戏是否结束
     public function isGameOver()
     {
         $result = false;

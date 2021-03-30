@@ -1,16 +1,10 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Next
- * Date: 2019/3/17
- * Time: 16:59
- */
 
 namespace App\Manager;
 
-
 use App\Model\Player;
 
+//游戏逻辑管理类
 class Logic
 {
     const PLAYER_DISPLAY_LEN = 2;
@@ -39,6 +33,7 @@ class Logic
         }
     }
 
+    //匹配玩家
     public function matchPlayer($playerId)
     {
         //将用户放入队列中
@@ -47,20 +42,27 @@ class Logic
         DataCenter::$server->task(['code' => TaskManager::TASK_CODE_FIND_PLAYER]);
     }
 
+    //移动玩家
     public function movePlayer($direction, $playerId)
     {
+        //验证方向是否符合规范
         if (!in_array($direction, Player::DIRECTION)) {
             echo $direction;
             return;
         }
+        //获取房间号
         $roomId = DataCenter::getPlayerRoomId($playerId);
+        //确认房间存在
         if (isset(DataCenter::$global['rooms'][$roomId])) {
             /**
              * @var Game $gameManager
              */
             $gameManager = DataCenter::$global['rooms'][$roomId]['manager'];
+            //移动角色
             $gameManager->playerMove($playerId, $direction);
+            //发送当前游戏信息
             $this->sendGameInfo($roomId);
+            //检查游戏是否结束
             $this->checkGameOver($roomId);
         }
     }
@@ -92,8 +94,10 @@ class Logic
         }
     }
 
+    //匹配成功,创建房间
     public function startRoom($roomId, $playerId)
     {
+        //判断是否存在房间信息,若不存在则添加
         if (!isset(DataCenter::$global['rooms'][$roomId])) {
             DataCenter::$global['rooms'][$roomId] = [
                 'id' => $roomId,
@@ -117,6 +121,7 @@ class Logic
         }
     }
 
+    //初始化游戏时间
     private function createGameTimer($roomId)
     {
         return swoole_timer_after(self::GAME_TIME_LIMIT * 1000, function () use ($roomId) {
@@ -133,6 +138,7 @@ class Logic
         });
     }
 
+    //检查游戏是否结束
     private function checkGameOver($roomId)
     {
         /**
@@ -140,13 +146,16 @@ class Logic
          * @var Player $player
          */
         $gameManager = DataCenter::$global['rooms'][$roomId]['manager'];
+        //游戏是否结束
         if ($gameManager->isGameOver()) {
             $players = $gameManager->getPlayers();
+            //获取胜利玩家
             $winner = current($players)->getId();
             $this->gameOver($roomId, $winner);
         }
     }
 
+    //游戏结束
     private function gameOver($roomId, $winner)
     {
         /**
@@ -154,15 +163,21 @@ class Logic
          * @var Player $player
          */
         $gameManager = DataCenter::$global['rooms'][$roomId]['manager'];
+        //获取房间内的用户id
         $players = $gameManager->getPlayers();
+        //新增用户id获胜记录次数
         DataCenter::addPlayerWinTimes($winner);
         foreach ($players as $player) {
+            //发送游戏结束信息
             Sender::sendMessage($player->getId(), Sender::MSG_GAME_OVER, ['winner' => $winner]);
+            //删除房间信息
             DataCenter::delPlayerRoomId($player->getId());
         }
+        //删除全局变量中的房间信息
         unset(DataCenter::$global['rooms'][$roomId]);
     }
 
+    //发送游戏信息(地图,玩家,游戏时间)
     private function sendGameInfo($roomId)
     {
         /**

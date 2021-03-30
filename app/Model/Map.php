@@ -8,7 +8,7 @@
 
 namespace App\Model;
 
-
+//游戏地图类
 class Map
 {
     private $width;
