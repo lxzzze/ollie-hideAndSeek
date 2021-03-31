@@ -1,6 +1,6 @@
 # HideAndSeek
 
-根据https://github.com/Zhao-666/HideAndSeek进行相关学习并对功能进行扩展优化
+根据 https://github.com/Zhao-666/HideAndSeek 进行相关学习并对功能进行扩展优化
 
 一个使用了Swoole作为服务端，Vue作为前端展示的捉迷藏小游戏
 
