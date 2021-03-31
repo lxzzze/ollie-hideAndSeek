@@ -21,6 +21,7 @@ class Logic
         Sender::sendMessage($challengerId, Sender::MSG_REFUSE_CHALLENGE);
     }
 
+    //挑战用户
     public function makeChallenge($opponentId, $playerId)
     {
         if (empty(DataCenter::getOnlinePlayer($opponentId))) {
